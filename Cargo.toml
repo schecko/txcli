@@ -5,5 +5,5 @@ edition = "2021"
 
 [dependencies]
 csv = "1.1.6"
-fixed = { version = "1.17.0", features = ["serde"] }
+fixed = { version = "1.17.0", features = ["serde", "serde-str"] }
 serde = { version = "1.0.143", features = ["derive"] }
