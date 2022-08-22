@@ -69,8 +69,6 @@ impl Tx {
     }
 }
 
-// State of a single client. the cid is redundant but makes
-// it easier to implement the From trait
 #[derive(Default)]
 struct ClientState {
     available: Currency,
