@@ -1,6 +1,5 @@
 use fixed::types::I50F14;
-use serde::de::{self, Visitor};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Serialize, Serializer};
 use std::collections::HashMap;
 use std::env;
 use std::error::Error;
@@ -33,15 +32,17 @@ enum TxType {
     ChargeBack,
 }
 
+// Dedicated struct to deserialize just so that the csv library
+// doesn't try to find key/value pairs instead of just values.
 #[derive(Deserialize, Debug)]
 struct InputTx(TxType, u16, u32, Currency);
 
 #[derive(Deserialize, Debug)]
 struct Tx {
-    pub tx_type: TxType,
-    pub cid: ClientId,
-    pub tid: TxId,
-    pub amount: Currency,
+    tx_type: TxType,
+    cid: ClientId,
+    tid: TxId,
+    amount: Currency,
 }
 
 impl From<InputTx> for Tx {
@@ -55,6 +56,7 @@ impl From<InputTx> for Tx {
     }
 }
 
+// Only for testing, normally the tx is created using From<InputTx>
 #[cfg(test)]
 impl Tx {
     fn new(ty: TxType, cid: u16, tid: u32, amount: Currency) -> Self {
@@ -67,8 +69,10 @@ impl Tx {
     }
 }
 
+// State of a single client. the cid is redundant but makes
+// it easier to implement the From trait
+#[derive(Default)]
 struct ClientState {
-    cid: ClientId,
     available: Currency,
     held: Currency,
     locked: bool,
@@ -76,20 +80,7 @@ struct ClientState {
     disputed: HashMap<TxId, Tx>,
 }
 
-impl ClientState {
-    fn new(id: ClientId) -> Self {
-        ClientState {
-            cid: id,
-            // don't want to derive from Default::default, so have to do individually
-            available: Default::default(),
-            held: Default::default(),
-            locked: Default::default(),
-            history: Default::default(),
-            disputed: Default::default(),
-        }
-    }
-}
-
+// bit hacky as this is limiting to only string output, but good enough for a demo cli tool.
 fn precision4_serialize_currency<S>(currency: &Currency, s: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
@@ -109,10 +100,11 @@ struct ClientOutputState {
     locked: bool,
 }
 
-impl From<ClientState> for ClientOutputState {
-    fn from(input: ClientState) -> Self {
+impl ClientOutputState {
+    // Not a proper trait... but need the second argument
+    fn from(input: ClientState, cid: ClientId) -> Self {
         ClientOutputState {
-            cid: input.cid,
+            cid,
             available: input.available,
             held: input.held,
             total: input.available + input.held,
@@ -154,10 +146,7 @@ impl Error for BasicError {
 }
 
 fn execute_transaction(app_state: &mut AppState, tx: Tx) {
-    let mut client_entry = app_state
-        .clients
-        .entry(tx.cid)
-        .or_insert(ClientState::new(tx.cid));
+    let mut client_entry = app_state.clients.entry(tx.cid).or_default();
 
     match &tx.tx_type {
         TxType::Deposit => {
@@ -196,17 +185,18 @@ fn execute_transaction(app_state: &mut AppState, tx: Tx) {
                 client_entry.history.insert(tx.tid, previous_tx);
                 client_entry.locked = true;
             } else {
-                eprintln!( "Detected chargeback referencing unknown disputed transaction tid[{}]. Ignoring.", tx.tid.0 );
+                eprintln!("Detected chargeback referencing unknown disputed transaction tid[{}]. Ignoring.", tx.tid.0);
             }
         }
     }
+
     client_entry.history.insert(tx.tid, tx);
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
-        return Err( BasicError::new( "First and only argument is required but missing. This must specify a path to the input csv file." ) );
+        return Err(BasicError::new("First and only argument is required but missing. This must specify a path to the input csv file."));
     }
 
     let path: &str = &args[1];
@@ -228,11 +218,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     println!("client,available,held,total,locked");
-    for (_cid, user) in app_state.clients {
+    for (cid, user) in app_state.clients {
         let mut writer = csv::WriterBuilder::new()
             .has_headers(false)
             .from_writer(vec![]);
-        writer.serialize(ClientOutputState::from(user))?;
+        writer.serialize(ClientOutputState::from(user, cid))?;
         let serialized = String::from_utf8(writer.into_inner()?)?;
         print!("{}", serialized);
     }
