@@ -12,7 +12,7 @@ Correctness
 - There is some minor usage of type safety, IDs are converted into NewTypes to ensure different types of IDs aren't used in the wrong context.
 
 Safety and Robustness
-- Robustness is handled by using fixed point math rather than floating point. Floating point numbers lose precision when adding large numbers with small numbers, and do not have associativity guarantees. 49 bits are used for the whole number, while 14 bits are used for the fractional component leaving one bit for the sign, allowing for numbers up to 562 949 953 421 312, with precision down to roughly 0.000061. Precision to exactly 0.00001 isn't possible with fixed point.
+- Robustness is handled by using fixed point math rather than floating point. Floating point numbers can lose precision when adding large numbers with small numbers, and do not have associativity guarantees. Fixed point numbers have drawbacks like no standard support for more complex math operations but those are not used in this instance. I chose a format where 49 bits are used for the whole number, 14 bits are used for the fractional component leaving one bit for the sign. This allows for numbers up to 562 949 953 421 312, with precision down to roughly 0.000061. Precision to exactly 0.00001 isn't possible with fixed point.
 - Transaction errors are detected, ignored and printed out to stderr.
 - Critical errors are printed to stderr and shutdown the process, such as providing the wrong argument, running out of memory, or serialization errors.
 
@@ -21,11 +21,11 @@ Efficiency
 If you were looking for some sql database queries, feel free to take a look at (some fairly old) opensource school projects:
 	- https://github.com/schecko/Akriveia/tree/master/server/backend/src/models
 	- https://github.com/schecko/AniMangaIndex/blob/master/animanga/main/views.py
-- The benefit of this memory scheme is that all gets into historical transactions or client states are O(1) using std::collections::HashMap with insertions amortized to O(1) assuming large datasets and assuming the underlying container is a vector.
+- The benefit of this memory scheme is that all queries into historical transactions or client states are O(1) using std::collections::HashMap with insertions amortized to O(1) assuming large datasets and assuming the underlying container is a vector.
 
 Maintainability
 - For such a short program, everything is in one file but I would start splitting up for more serious projects.
-- Files are formatted using rustfmt.
+- Rust files are formatted using rustfmt.
 
 
 
