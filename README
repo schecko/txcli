@@ -17,11 +17,11 @@ Safety and Robustness
 - Critical errors are printed to stderr and shutdown the process, such as providing the wrong argument, running out of memory, or serialization errors.
 
 Efficiency
-- Memory usage is currently O(n) with the number of transactions and O(m) with the number of clients. The input file is not currently streamed but it could be. To handle disputes that can reference any previous transaction, all transactions are retained in a hashmap assocaited with each client to avoid scanning the entire input file for every dispute. This would normally be stored in a database but this has been skipped for two main reasons: developmment time constraints, and limitations on running the cli tool without the need for further commands.
+- Memory usage is currently O(n) with the number of transactions and O(m) with the number of clients. The input file is streamed via the csv crate, which uses an io::BufReader internally. To handle disputes that can reference any previous transaction, all previous transactions are retained in a hashmap assocaited with each client to avoid scanning the entire input file for every dispute. This would normally be stored in a database but this has been skipped for two main reasons: developmment time constraints, and limitations on running the cli tool without the need for further commands.
 If you were looking for some sql database queries, feel free to take a look at (some fairly old) opensource school projects:
 	- https://github.com/schecko/Akriveia/tree/master/server/backend/src/models
 	- https://github.com/schecko/AniMangaIndex/blob/master/animanga/main/views.py
-- The benefit of this memory scheme is that all gets into historical transactions or client states are O(1) using std::collections::HashMap.
+- The benefit of this memory scheme is that all gets into historical transactions or client states are O(1) using std::collections::HashMap with insertions amortized to O(1) assuming large datasets and assuming the underlying container is a vector.
 
 Maintainability
 - For such a short program, everything is in one file but I would start splitting up for more serious projects.

@@ -35,7 +35,7 @@ enum TxType {
 // Dedicated struct to deserialize just so that the csv library
 // doesn't try to find key/value pairs instead of just values.
 #[derive(Deserialize, Debug)]
-struct InputTx(TxType, u16, u32, Currency);
+struct InputTx(TxType, u16, u32, Option<Currency>);
 
 #[derive(Deserialize, Debug)]
 struct Tx {
@@ -51,7 +51,7 @@ impl From<InputTx> for Tx {
             tx_type: input.0,
             cid: ClientId(input.1),
             tid: TxId(input.2),
-            amount: input.3,
+            amount: input.3.unwrap_or(Currency::from_num(0)),
         }
     }
 }
@@ -151,9 +151,20 @@ fn execute_transaction(app_state: &mut AppState, tx: Tx) {
             client_entry.available += tx.amount;
         }
         TxType::Withdrawal => {
-            client_entry.available -= tx.amount;
+            if client_entry.available >= tx.amount
+            {
+                client_entry.available -= tx.amount;
+            }
+            else
+            {
+                eprintln!(
+                    "Insuffient funds to withdraw tid[{}]. Ignoring.",
+                    tx.tid.0
+                );
+            }
         }
         TxType::Dispute => {
+            // Unspecified behaviour when there is insufficient funds. Allow the user to enter debt when funds are disputed.
             if let Some(previous_tx) = client_entry.history.remove(&tx.tid) {
                 client_entry.held += previous_tx.amount;
                 client_entry.available -= previous_tx.amount;
