@@ -1,5 +1,6 @@
 use fixed::types::I50F14;
-use serde::{Deserialize, Serialize};
+use serde::de::{self, Visitor};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
 use std::env;
 use std::error::Error;
@@ -14,9 +15,11 @@ use std::hash::Hash;
 type Currency = I50F14;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Hash, Eq, Clone, Copy, Default)]
+#[serde(transparent)]
 struct ClientId(u16);
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Hash, Eq, Clone, Copy, Default)]
+#[serde(transparent)]
 struct TxId(u32);
 
 #[repr(u8)]
@@ -64,16 +67,58 @@ impl Tx {
     }
 }
 
-#[derive(Serialize, Default)]
 struct ClientState {
     cid: ClientId,
     available: Currency,
     held: Currency,
     locked: bool,
-    #[serde(skip)]
     history: HashMap<TxId, Tx>,
-    #[serde(skip)]
     disputed: HashMap<TxId, Tx>,
+}
+
+impl ClientState {
+    fn new(id: ClientId) -> Self {
+        ClientState {
+            cid: id,
+            // don't want to derive from Default::default, so have to do individually
+            available: Default::default(),
+            held: Default::default(),
+            locked: Default::default(),
+            history: Default::default(),
+            disputed: Default::default(),
+        }
+    }
+}
+
+fn precision4_serialize_currency<S>(currency: &Currency, s: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    s.serialize_str(&format!("{:.4}", currency))
+}
+
+#[derive(Serialize)]
+struct ClientOutputState {
+    cid: ClientId,
+    #[serde(serialize_with = "precision4_serialize_currency")]
+    available: Currency,
+    #[serde(serialize_with = "precision4_serialize_currency")]
+    held: Currency,
+    #[serde(serialize_with = "precision4_serialize_currency")]
+    total: Currency,
+    locked: bool,
+}
+
+impl From<ClientState> for ClientOutputState {
+    fn from(input: ClientState) -> Self {
+        ClientOutputState {
+            cid: input.cid,
+            available: input.available,
+            held: input.held,
+            total: input.available + input.held,
+            locked: input.locked,
+        }
+    }
 }
 
 #[derive(Default)]
@@ -112,13 +157,8 @@ fn execute_transaction(app_state: &mut AppState, tx: Tx) {
     let mut client_entry = app_state
         .clients
         .entry(tx.cid)
-        .or_insert(ClientState::default());
+        .or_insert(ClientState::new(tx.cid));
 
-    // Should probably be stored in a db... hopefully your test machine has a lot
-    // of RAM if its really going to use the entire space of a u32.
-    // I'm guessing this will cause some large sample tests to fail,
-    // but IRL the history is desireable to retain, so I am retaining it
-    // in this crude form.
     match &tx.tx_type {
         TxType::Deposit => {
             client_entry.available += tx.amount;
@@ -185,6 +225,16 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
         let tx = Tx::from(row?);
         execute_transaction(&mut app_state, tx);
+    }
+
+    println!("client,available,held,total,locked");
+    for (_cid, user) in app_state.clients {
+        let mut writer = csv::WriterBuilder::new()
+            .has_headers(false)
+            .from_writer(vec![]);
+        writer.serialize(ClientOutputState::from(user))?;
+        let serialized = String::from_utf8(writer.into_inner()?)?;
+        print!("{}", serialized);
     }
 
     Ok(())
